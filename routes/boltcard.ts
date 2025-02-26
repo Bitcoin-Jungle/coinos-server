@@ -7,6 +7,7 @@ import {
   deleteBoltCard, 
   getBoltCard, 
   generatePairingQRCode, 
+  generatePairingJSON,
   getUserBoltCards, 
   updateBoltCard, 
   updateCardUID, 
@@ -63,12 +64,12 @@ export async function createCard(req: RequestWithUser, res: FastifyReply) {
       parseInt(dayLimitSats) || 200000
     );
     
-    // Generate pairing QR code
-    const pairingQRCode = generatePairingQRCode(card);
+    // Generate the programming URL
+    const programmingUrl = generatePairingQRCode(card);
     
     res.send({ 
       card,
-      pairingQRCode
+      programmingUrl
     });
   } catch (e) {
     err('Error creating Bolt Card', e);
@@ -111,15 +112,16 @@ export async function getCard(req: RequestWithUser, res: FastifyReply) {
       return res.code(403).send({ error: 'Not authorized to access this card' });
     }
     
-    // Generate pairing QR code if the card is not paired yet
-    let pairingQRCode = null;
+    // Generate programming URL if the card is not paired yet
+    let programmingUrl = null;
+    
     if (!card.uid) {
-      pairingQRCode = generatePairingQRCode(card);
+      programmingUrl = generatePairingQRCode(card);
     }
     
     res.send({ 
       card,
-      pairingQRCode
+      programmingUrl
     });
   } catch (e) {
     err('Error getting Bolt Card', e);
@@ -206,6 +208,11 @@ export async function pairCard(req: RequestWithUser, res: FastifyReply) {
     if (!id) fail('Card ID is required');
     if (!uid) fail('UID is required');
     
+    // Validate UID format (should be a 7-byte hex string)
+    if (!/^[0-9a-fA-F]{14}$/.test(uid)) {
+      return res.code(400).send({ error: 'Invalid UID format. Expected 7-byte hex string (14 characters)' });
+    }
+    
     const card = await getBoltCard(id);
     
     if (!card) {
@@ -216,11 +223,130 @@ export async function pairCard(req: RequestWithUser, res: FastifyReply) {
       return res.code(403).send({ error: 'Not authorized to pair this card' });
     }
     
+    // Check if the card is already paired
+    if (card.uid) {
+      return res.code(400).send({ error: 'Card is already paired' });
+    }
+    
+    // Update the card with the UID
     const updatedCard = await updateCardUID(id, uid);
     
-    res.send({ card: updatedCard });
+    if (!updatedCard) {
+      return res.code(500).send({ error: 'Failed to update card' });
+    }
+    
+    l('Card paired successfully', { cardId: id, uid });
+    
+    res.send({ 
+      success: true,
+      card: updatedCard
+    });
   } catch (e) {
     err('Error pairing Bolt Card', e);
+    res.code(500).send({ error: e.message });
+  }
+}
+
+// Get card programming data
+export async function getCardProgrammingData(req: RequestWithUser, res: FastifyReply) {
+  try {
+    const { user } = req;
+    const { id } = req.params as any;
+    
+    if (!user) fail('User not authenticated');
+    if (!id) fail('Card ID is required');
+    
+    const card = await getBoltCard(id);
+    
+    if (!card) {
+      return res.code(404).send({ error: 'Card not found' });
+    }
+    
+    if (card.userId !== user.id) {
+      return res.code(403).send({ error: 'Not authorized to access this card' });
+    }
+    
+    // Generate programming data in JSON format
+    const programmingData = generatePairingJSON(card);
+    
+    res.send({ 
+      success: true,
+      card,
+      programmingData
+    });
+  } catch (e) {
+    err('Error getting card programming data', e);
+    res.code(500).send({ error: e.message });
+  }
+}
+
+// Public endpoint for NFC apps to fetch card programming data
+export async function getPublicCardProgrammingData(req: FastifyRequest, res: FastifyReply) {
+  try {
+    const { token } = req.params as any;
+    
+    if (!token) {
+      return res.code(400).send({ error: 'Token is required' });
+    }
+    
+    // Decode the token (base64)
+    let decodedData;
+    try {
+      const decoded = Buffer.from(token, 'base64').toString();
+      decodedData = JSON.parse(decoded);
+    } catch (e) {
+      return res.code(400).send({ error: 'Invalid token format' });
+    }
+    
+    // Extract the card ID from the decoded data
+    const { cardId } = decodedData;
+    
+    if (!cardId) {
+      return res.code(400).send({ error: 'Card ID not found in token' });
+    }
+    
+    // Get the card
+    const card = await getBoltCard(cardId);
+    
+    if (!card) {
+      return res.code(404).send({ error: 'Card not found' });
+    }
+    
+    // Check if the card is already paired (has a UID)
+    if (card.uid) {
+      return res.code(400).send({ error: 'Card is already paired' });
+    }
+    
+    // Get the user associated with the card
+    const user = await getUser({ id: card.userId });
+    
+    if (!user) {
+      return res.code(404).send({ error: 'User not found' });
+    }
+    
+    // Return the programming data in the format expected by NFC apps
+    const baseUrl = 'https://coinos.io';
+    const programmingData = {
+      k0: card.k0_auth_key,
+      k2: card.k2_cmac_key,
+      k3: card.k3,
+      k4: card.k4,
+      name: card.name,
+      tx_limit_sats: card.tx_limit_sats,
+      day_limit_sats: card.day_limit_sats,
+      lnurlw_base_url: `${baseUrl}/boltcard/lnurlw`,
+      card_id: card.id,
+      user_id: card.userId,
+      user_name: user.username,
+      callback_url: `${baseUrl}/boltcard/pair`,
+      created_time: card.created
+    };
+    
+    l('Card programming data requested', { cardId: card.id });
+    
+    res.send(programmingData);
+  } catch (e) {
+    err('Error getting public card programming data', e);
     res.code(500).send({ error: e.message });
   }
 }
@@ -507,6 +633,8 @@ export default {
   updateCard,
   deleteCard,
   pairCard,
+  getCardProgrammingData,
+  getPublicCardProgrammingData,
   lnurlwRequest,
   lnurlwCallback,
   getCardBalance,

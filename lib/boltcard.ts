@@ -260,22 +260,38 @@ const getAllBoltCards = async (): Promise<BoltCard[]> => {
   return cards;
 };
 
-// Generate QR code data for card pairing
-export const generatePairingQRCode = (card: BoltCard): string => {
-  const baseUrl = 'https://coinos.io';
-  const pairingData = {
+// Generate pairing data for a card
+export const generatePairingData = (card: BoltCard): any => {
+  return {
     k0: card.k0_auth_key,
     k2: card.k2_cmac_key,
     k3: card.k3,
     k4: card.k4,
     cardId: card.id,
+    name: card.name,
+    tx_limit_sats: card.tx_limit_sats,
+    day_limit_sats: card.day_limit_sats
   };
+};
+
+// Generate QR code data for card pairing
+export const generatePairingQRCode = (card: BoltCard): string => {
+  // Generate token for card programming
+  const tokenData = {
+    cardId: card.id,
+    timestamp: Date.now()
+  };
+  const token = Buffer.from(JSON.stringify(tokenData)).toString('base64');
   
-  // Encode the pairing data as JSON and then base64
-  const encodedData = Buffer.from(JSON.stringify(pairingData)).toString('base64');
-  
-  // Return the URL that will be used for pairing
-  return `${baseUrl}/boltcard/pair/${encodedData}`;
+  // Generate the programming URL
+  const baseUrl = 'https://coinos.io';
+  return `${baseUrl}/boltcard/program/${token}`;
+};
+
+// Generate JSON for card programming
+export const generatePairingJSON = (card: BoltCard): string => {
+  const pairingData = generatePairingData(card);
+  return JSON.stringify(pairingData);
 };
 
 // Update card UID after pairing

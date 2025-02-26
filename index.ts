@@ -179,6 +179,8 @@ app.get("/boltcard/:id", auth, boltcard.getCard);
 app.put("/boltcard/:id", auth, boltcard.updateCard);
 app.delete("/boltcard/:id", auth, boltcard.deleteCard);
 app.post("/boltcard/pair", auth, boltcard.pairCard);
+app.get("/boltcard/:id/program", auth, boltcard.getCardProgrammingData);
+app.get("/boltcard/program/:token", boltcard.getPublicCardProgrammingData);
 
 // Bolt Card LNURLW endpoints
 app.get("/boltcard/lnurlw", boltcard.lnurlwRequest);
