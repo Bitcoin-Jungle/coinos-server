@@ -8,6 +8,7 @@ import { catchUp, check } from "$lib/payments";
 import { getFx } from "$lib/rates";
 import { sendHeartbeat } from "$lib/sockets";
 
+import boltcard from "$routes/boltcard";
 import ecash from "$routes/ecash";
 import email from "$routes/email";
 import info from "$routes/info";
@@ -161,7 +162,7 @@ app.post("/mint", auth, ecash.mint);
 app.post("/melt", auth, ecash.melt);
 app.post("/ecash/:id", ecash.receive);
 
-app.get("/replay/:index", (req, res) => {
+app.get("/replay/:index", (req: any, res) => {
   replay(req.params.index);
   res.send({});
 });
@@ -170,6 +171,19 @@ app.post("/echo", (req, res) => {
   console.log("echo", req.body);
   res.send(req.body);
 });
+
+// Bolt Card routes
+app.post("/boltcard", auth, boltcard.createCard);
+app.get("/boltcard", auth, boltcard.getCards);
+app.get("/boltcard/:id", auth, boltcard.getCard);
+app.put("/boltcard/:id", auth, boltcard.updateCard);
+app.delete("/boltcard/:id", auth, boltcard.deleteCard);
+app.post("/boltcard/pair", auth, boltcard.pairCard);
+
+// Bolt Card LNURLW endpoints
+app.get("/boltcard/lnurlw", boltcard.lnurlwRequest);
+app.get("/boltcard/lnurlw/callback", boltcard.lnurlwCallback);
+app.get("/boltcard/balance/:id", boltcard.getCardBalance);
 
 const host: string = process.env["HOST"] || "0.0.0.0";
 const port: number = parseInt(process.env["PORT"]) || 3119;

@@ -1,6 +1,6 @@
-cp config.ts.sample config.ts
-cp compose.yml.sample compose.yml
-cp -r sampledata data
+#cp config.ts.sample config.ts
+#cp compose.yml.sample compose.yml
+#cp -r sampledata data
 sudo chown 100:100 data/nostr/data
 docker compose up -d
 docker run -it -v $(pwd):/home/bun/app --entrypoint bun asoltys/coinos-server i
